@@ -1,0 +1,14 @@
+[package]
+name = "osm-world-gen"
+version = "0.1.0"
+authors = ["Wardenfar <theo.emeriau@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+flate2 = "1.0.20"
+feather-base = {git = "https://github.com/feather-rs/feather", branch="main"}
+feather-blocks = {git = "https://github.com/feather-rs/feather", branch="main"}
+feather-common = {git = "https://github.com/feather-rs/feather", branch="main"}
+feather-worldgen = {git = "https://github.com/feather-rs/feather", branch="main"}
