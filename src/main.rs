@@ -3,6 +3,8 @@ use std::fs::File;
 use std::io::{BufReader, Write};
 use std::path::Path;
 use std::process::exit;
+use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicI32, AtomicPtr, AtomicUsize, Ordering};
 
 use feather_base::{Biome, BlockPosition, Chunk, ChunkPosition};
 use feather_base::anvil::level::{LevelData, SuperflatGeneratorOptions};
@@ -14,6 +16,7 @@ use feather_common::world_source::region::RegionWorldSource;
 use feather_common::world_source::WorldSource;
 use feather_worldgen::{SuperflatWorldGenerator, WorldGenerator};
 use protobuf::{CodedInputStream, Message};
+use threadpool::ThreadPool;
 
 use renderer::coords::Coords;
 use renderer::draw::drawer::Drawer;
@@ -21,37 +24,33 @@ use renderer::draw::tile_pixels::TilePixels;
 use renderer::geodata::reader::{GeodataReader, OsmEntities};
 use renderer::mapcss::parser::parse_file;
 use renderer::mapcss::styler::{Styler, StyleType};
-use renderer::tile::{coords_to_max_zoom_tile, MAX_ZOOM, Tile, tile_to_max_zoom_tile_range, coords_to_zoom_tile};
-use threadpool::ThreadPool;
-use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicPtr, Ordering, AtomicUsize, AtomicI32};
+use renderer::tile::{coords_to_max_zoom_tile, coords_to_zoom_tile, MAX_ZOOM, Tile, tile_to_max_zoom_tile_range};
 
 mod vector_tile;
+
+static SCALE: usize = 3;
 
 fn main() {
     // let level = generate_level();
     // let mut file = File::create("world/level.dat").expect("open level.dat");
     // level.save_to_file(&mut file).expect("write to level.dat");
 
-    // let mut file = File::open("0.mvt").expect("failed open mvt");
-    // let mut reader = BufReader::new(file);
-    //
-    // let tile = Tile::parse_from_reader(&mut reader).unwrap();
-    //
-    // println!("{:?}", tile);
+    match renderer::geodata::importer::import("herblay.osm", "herblay.bin") {
+        Ok(_) => println!("All good"),
+        Err(err) => {
+            for cause in err.chain() {
+                eprintln!("{}", cause);
+            }
+            std::process::exit(1);
+        }
+    }
 
-    // match renderer::geodata::importer::import("herblay.osm", "herblay.bin") {
-    //     Ok(_) => println!("All good"),
-    //     Err(err) => {
-    //         for cause in err.chain() {
-    //             eprintln!("{}", cause);
-    //         }
-    //         std::process::exit(1);
-    //     }
-    // }
+    let text_scale: f64 = 0.0;
+    let rules = parse_file(".".as_ref(), "test.mapcss").expect("Read rules");
+    let styler = Styler::new(rules, &StyleType::MapsMe, Option::from(text_scale));
+    let styler_arc = Arc::new(styler);
 
     let storage = GeodataReader::load("herblay.bin").unwrap();
-
     let storage_arc = Arc::new(storage);
 
     let bbox = storage_arc.boundingbox();
@@ -77,7 +76,6 @@ fn main() {
 
     for x in min_x..max_x {
         for y in min_y..max_y {
-
             let tile = Tile {
                 zoom,
                 x,
@@ -86,10 +84,11 @@ fn main() {
             let drawer = Drawer::new("output".as_ref());
 
             let storage_clone = storage_arc.clone();
-            let count_clone  = Arc::clone(&count_lock);
+            let styler_clone = styler_arc.clone();
+            let count_clone = Arc::clone(&count_lock);
             pool.execute(move || {
                 let entities = storage_clone.get_entities_in_tile_with_neighbors(&tile, &None);
-                render_tile(entities, &drawer, &tile);
+                render_tile(entities, &drawer, &tile, &styler_clone);
 
                 let current = count_clone.fetch_add(1, Ordering::SeqCst);
                 println!("{} / {}", current, range_x * range_y)
@@ -114,21 +113,16 @@ fn main() {
     // }
 }
 
-fn render_tile(entities: OsmEntities, drawer: &Drawer, tile: &Tile) {
+fn render_tile(entities: OsmEntities, drawer: &Drawer, tile: &Tile, styler: &Styler) {
     let filename = format!("tiles/tile_{}_{}.png", tile.x, tile.y);
-    let scale = 2;
-    let text_scale: f64 = 0.0;
 
-    if Path::new(&filename).exists() {
-        return
-    }
+    // if Path::new(&filename).exists() {
+    //     return;
+    // }
 
-    let mut pixels = TilePixels::new(scale);
+    let mut pixels = TilePixels::new(SCALE);
 
-    let rules = parse_file(".".as_ref(), "test.mapcss").expect("Read rules");
-    let styler = Styler::new(rules, &StyleType::MapsMe, Option::from(text_scale));
-
-    let png = drawer.draw_tile(&entities, &tile, &mut pixels, scale, &styler).expect("draw tile");
+    let png = drawer.draw_tile(&entities, &tile, &mut pixels, SCALE, &styler).expect("draw tile");
 
     {
         let mut file = File::create(filename).expect("open file");
@@ -149,36 +143,4 @@ fn fill_chunk(region: &mut RegionHandle, x: i32, z: i32) {
     let block_entities = Vec::new();
 
     region.save_chunk(&chunk, &entities, &block_entities).expect("Cant save the chunk");
-}
-
-fn generate_level() -> LevelData {
-    LevelData {
-        allow_commands: true,
-        border_center_x: 0.0,
-        border_center_z: 0.0,
-        border_damage_per_block: 0.0,
-        border_safe_zone: 0.0,
-        border_size: 0.0,
-        clear_weather_time: 0,
-        data_version: 0,
-        day_time: 0,
-        difficulty: 0,
-        difficulty_locked: 0,
-        game_type: 0,
-        hardcore: false,
-        initialized: false,
-        last_played: 0,
-        raining: false,
-        rain_time: 0,
-        seed: 0,
-        spawn_x: 0,
-        spawn_y: 100,
-        spawn_z: 0,
-        thundering: false,
-        thunder_time: 0,
-        time: 0,
-        version: Default::default(),
-        generator_name: String::from("minecraft:flat"),
-        generator_options: None,
-    }
 }
