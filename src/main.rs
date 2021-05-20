@@ -1,7 +1,8 @@
-mod vector_tile;
-
+use std::cmp::{max, min};
 use std::fs::File;
+use std::io::{BufReader, Write};
 use std::path::Path;
+use std::process::exit;
 
 use feather_base::{Biome, BlockPosition, Chunk, ChunkPosition};
 use feather_base::anvil::level::{LevelData, SuperflatGeneratorOptions};
@@ -12,15 +13,20 @@ use feather_common::world_source::flat::FlatWorldSource;
 use feather_common::world_source::region::RegionWorldSource;
 use feather_common::world_source::WorldSource;
 use feather_worldgen::{SuperflatWorldGenerator, WorldGenerator};
-use std::io::{BufReader, Write};
-use protobuf::{Message, CodedInputStream};
-use renderer::geodata::reader::GeodataReader;
-use std::process::exit;
+use protobuf::{CodedInputStream, Message};
+
+use renderer::coords::Coords;
 use renderer::draw::drawer::Drawer;
-use renderer::tile::Tile;
 use renderer::draw::tile_pixels::TilePixels;
+use renderer::geodata::reader::{GeodataReader, OsmEntities};
 use renderer::mapcss::parser::parse_file;
 use renderer::mapcss::styler::{Styler, StyleType};
+use renderer::tile::{coords_to_max_zoom_tile, MAX_ZOOM, Tile, tile_to_max_zoom_tile_range, coords_to_zoom_tile};
+use threadpool::ThreadPool;
+use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicPtr, Ordering, AtomicUsize, AtomicI32};
+
+mod vector_tile;
 
 fn main() {
     // let level = generate_level();
@@ -44,39 +50,55 @@ fn main() {
     //     }
     // }
 
-    let result = match GeodataReader::load("herblay.bin") {
-        Ok(r) => {r}
-        Err(e) => {
-            println!("{}", e);
-            exit(0);
+    let storage = GeodataReader::load("herblay.bin").unwrap();
+
+    let storage_arc = Arc::new(storage);
+
+    let bbox = storage_arc.boundingbox();
+    let min_corner = (bbox.min_lat, bbox.min_lon);
+    let max_corner = (bbox.max_lat, bbox.max_lon);
+
+    let zoom = 15;
+
+    let min_tile = coords_to_zoom_tile(&min_corner, zoom);
+    let max_tile = coords_to_zoom_tile(&max_corner, zoom);
+
+    let min_x = min(max_tile.x, min_tile.x);
+    let min_y = min(max_tile.y, min_tile.y);
+    let max_x = max(max_tile.x, min_tile.x) + 1;
+    let max_y = max(max_tile.y, min_tile.y) + 1;
+
+    let range_x = (max_x - min_x);
+    let range_y = (max_y - min_y);
+
+    let pool = ThreadPool::new(16);
+
+    let count_lock = Arc::new(AtomicI32::new(0));
+
+    for x in min_x..max_x {
+        for y in min_y..max_y {
+
+            let tile = Tile {
+                zoom,
+                x,
+                y,
+            };
+            let drawer = Drawer::new("output".as_ref());
+
+            let storage_clone = storage_arc.clone();
+            let count_clone  = Arc::clone(&count_lock);
+            pool.execute(move || {
+                let entities = storage_clone.get_entities_in_tile_with_neighbors(&tile, &None);
+                render_tile(entities, &drawer, &tile);
+
+                let current = count_clone.fetch_add(1, Ordering::SeqCst);
+                println!("{} / {}", current, range_x * range_y)
+            });
         }
-    };
-
-    let drawer= Drawer::new("output".as_ref());
-
-    let tile = Tile {
-        zoom: 16,
-        x: 33161,
-        y: 22508
-    };
-
-    let scale = 3;
-
-    let mut pixels = TilePixels::new(scale);
-
-    let entities = result.get_entities_in_tile_with_neighbors(&tile, &None);
-
-    println!("nodes : {}", entities.nodes.len());
-
-    let rules = parse_file(".".as_ref(), "test.mapcss").expect("Read rules");
-    let styler = Styler::new(rules, &StyleType::MapsMe, Option::from(1.0));
-
-    let png = drawer.draw_tile(&entities, &tile, &mut pixels, scale, &styler).expect("draw tile");
-
-    {
-        let mut file = File::create("output.png").expect("open file");
-        file.write_all(&png);
     }
+
+    pool.join()
+
 
     // let mut region = create_region(
     //     Path::new("world"),
@@ -90,6 +112,28 @@ fn main() {
     //         fill_chunk(&mut region, x, z);
     //     }
     // }
+}
+
+fn render_tile(entities: OsmEntities, drawer: &Drawer, tile: &Tile) {
+    let filename = format!("tiles/tile_{}_{}.png", tile.x, tile.y);
+    let scale = 2;
+    let text_scale: f64 = 0.0;
+
+    if Path::new(&filename).exists() {
+        return
+    }
+
+    let mut pixels = TilePixels::new(scale);
+
+    let rules = parse_file(".".as_ref(), "test.mapcss").expect("Read rules");
+    let styler = Styler::new(rules, &StyleType::MapsMe, Option::from(text_scale));
+
+    let png = drawer.draw_tile(&entities, &tile, &mut pixels, scale, &styler).expect("draw tile");
+
+    {
+        let mut file = File::create(filename).expect("open file");
+        file.write_all(&png);
+    }
 }
 
 fn fill_chunk(region: &mut RegionHandle, x: i32, z: i32) {

@@ -9,7 +9,8 @@ edition = "2018"
 [dependencies]
 flate2 = "1.0.20"
 protobuf = "2.23.0"
-renderer = {git = "https://github.com/dfyz/osm-renderer"}
+renderer = {path = "../osm-renderer"}
+threadpool = "1.8.1"
 feather-base = {git = "https://github.com/feather-rs/feather", branch="main"}
 feather-blocks = {git = "https://github.com/feather-rs/feather", branch="main"}
 feather-common = {git = "https://github.com/feather-rs/feather", branch="main"}
