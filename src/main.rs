@@ -1,3 +1,5 @@
+mod vector_tile;
+
 use std::fs::File;
 use std::path::Path;
 
@@ -10,24 +12,84 @@ use feather_common::world_source::flat::FlatWorldSource;
 use feather_common::world_source::region::RegionWorldSource;
 use feather_common::world_source::WorldSource;
 use feather_worldgen::{SuperflatWorldGenerator, WorldGenerator};
+use std::io::{BufReader, Write};
+use protobuf::{Message, CodedInputStream};
+use renderer::geodata::reader::GeodataReader;
+use std::process::exit;
+use renderer::draw::drawer::Drawer;
+use renderer::tile::Tile;
+use renderer::draw::tile_pixels::TilePixels;
+use renderer::mapcss::parser::parse_file;
+use renderer::mapcss::styler::{Styler, StyleType};
 
 fn main() {
     // let level = generate_level();
     // let mut file = File::create("world/level.dat").expect("open level.dat");
     // level.save_to_file(&mut file).expect("write to level.dat");
 
-    let mut region = create_region(
-        Path::new("world"),
-        RegionPosition::from_chunk(
-            ChunkPosition::new(0, 0)
-        )).expect("create region");
+    // let mut file = File::open("0.mvt").expect("failed open mvt");
+    // let mut reader = BufReader::new(file);
+    //
+    // let tile = Tile::parse_from_reader(&mut reader).unwrap();
+    //
+    // println!("{:?}", tile);
 
-    for x in 0..15 {
-        for z in 0..15 {
-            println!("{}/{}", x * 16 + z, 16 * 16);
-            fill_chunk(&mut region, x, z);
+    // match renderer::geodata::importer::import("herblay.osm", "herblay.bin") {
+    //     Ok(_) => println!("All good"),
+    //     Err(err) => {
+    //         for cause in err.chain() {
+    //             eprintln!("{}", cause);
+    //         }
+    //         std::process::exit(1);
+    //     }
+    // }
+
+    let result = match GeodataReader::load("herblay.bin") {
+        Ok(r) => {r}
+        Err(e) => {
+            println!("{}", e);
+            exit(0);
         }
+    };
+
+    let drawer= Drawer::new("output".as_ref());
+
+    let tile = Tile {
+        zoom: 16,
+        x: 33161,
+        y: 22508
+    };
+
+    let scale = 3;
+
+    let mut pixels = TilePixels::new(scale);
+
+    let entities = result.get_entities_in_tile_with_neighbors(&tile, &None);
+
+    println!("nodes : {}", entities.nodes.len());
+
+    let rules = parse_file(".".as_ref(), "test.mapcss").expect("Read rules");
+    let styler = Styler::new(rules, &StyleType::MapsMe, Option::from(1.0));
+
+    let png = drawer.draw_tile(&entities, &tile, &mut pixels, scale, &styler).expect("draw tile");
+
+    {
+        let mut file = File::create("output.png").expect("open file");
+        file.write_all(&png);
     }
+
+    // let mut region = create_region(
+    //     Path::new("world"),
+    //     RegionPosition::from_chunk(
+    //         ChunkPosition::new(0, 0)
+    //     )).expect("create region");
+    //
+    // for x in 0..15 {
+    //     for z in 0..15 {
+    //         println!("{}/{}", x * 16 + z, 16 * 16);
+    //         fill_chunk(&mut region, x, z);
+    //     }
+    // }
 }
 
 fn fill_chunk(region: &mut RegionHandle, x: i32, z: i32) {
