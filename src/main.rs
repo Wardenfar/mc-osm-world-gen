@@ -19,7 +19,7 @@ use protobuf::{CodedInputStream, Message};
 use threadpool::ThreadPool;
 
 use renderer::coords::Coords;
-use renderer::draw::drawer::Drawer;
+use renderer::draw::drawer::{Drawer, TileRenderedPixels};
 use renderer::draw::tile_pixels::TilePixels;
 use renderer::geodata::reader::{GeodataReader, OsmEntities};
 use renderer::mapcss::parser::parse_file;
@@ -28,22 +28,22 @@ use renderer::tile::{coords_to_max_zoom_tile, coords_to_zoom_tile, MAX_ZOOM, Til
 
 mod vector_tile;
 
-static SCALE: usize = 3;
+static SCALE: usize = 2;
 
 fn main() {
     // let level = generate_level();
     // let mut file = File::create("world/level.dat").expect("open level.dat");
     // level.save_to_file(&mut file).expect("write to level.dat");
 
-    match renderer::geodata::importer::import("herblay.osm", "herblay.bin") {
-        Ok(_) => println!("All good"),
-        Err(err) => {
-            for cause in err.chain() {
-                eprintln!("{}", cause);
-            }
-            std::process::exit(1);
-        }
-    }
+    // match renderer::geodata::importer::import("herblay.osm", "herblay.bin") {
+    //     Ok(_) => println!("All good"),
+    //     Err(err) => {
+    //         for cause in err.chain() {
+    //             eprintln!("{}", cause);
+    //         }
+    //         std::process::exit(1);
+    //     }
+    // }
 
     let text_scale: f64 = 0.0;
     let rules = parse_file(".".as_ref(), "test.mapcss").expect("Read rules");
@@ -88,22 +88,17 @@ fn main() {
             let count_clone = Arc::clone(&count_lock);
             pool.execute(move || {
                 let entities = storage_clone.get_entities_in_tile_with_neighbors(&tile, &None);
-                render_tile(entities, &drawer, &tile, &styler_clone);
+                let pixels = render_tile(entities, &drawer, &tile, &styler_clone);
+                fill_region(x - min_x, y - min_y, pixels);
 
                 let current = count_clone.fetch_add(1, Ordering::SeqCst);
-                println!("{} / {}", current, range_x * range_y)
+                println!("{} / {}", current, range_x * range_y);
             });
         }
     }
 
     pool.join()
 
-
-    // let mut region = create_region(
-    //     Path::new("world"),
-    //     RegionPosition::from_chunk(
-    //         ChunkPosition::new(0, 0)
-    //     )).expect("create region");
     //
     // for x in 0..15 {
     //     for z in 0..15 {
@@ -113,7 +108,38 @@ fn main() {
     // }
 }
 
-fn render_tile(entities: OsmEntities, drawer: &Drawer, tile: &Tile, styler: &Styler) {
+fn fill_region(region_x: u32, region_y: u32, pixels: TileRenderedPixels) {
+    let min_chunk_x = region_x << 5;
+    let min_chunk_y = region_y << 5;
+
+    let mut region = create_region(
+        Path::new("world"),
+        RegionPosition::from_chunk(
+            ChunkPosition::new(min_chunk_x as i32, min_chunk_y as i32)
+        )).expect("create region");
+
+    for chunk_x in min_chunk_x..(min_chunk_x + 32) {
+        for chunk_y in min_chunk_y..(min_chunk_y + 32) {
+            let mut chunk = Chunk::new(ChunkPosition::new(chunk_x as i32, chunk_y as i32));
+            for x in 0..16 {
+                for y in 0..16 {
+                    let img_x = (chunk_x - min_chunk_x) * 16 + x;
+                    let img_y = (chunk_y - min_chunk_y) * 16 + y;
+                    let color = pixels.triples[(img_x * 512 + img_y) as usize];
+                    let block = match color {
+                        (255,255,255) => BlockId::oak_planks(),
+                        (255,0,0) => BlockId::coal_block(),
+                        _ => BlockId::grass_block()
+                    };
+                    chunk.set_block_at(x as usize, 10, y as usize, block);
+                }
+            }
+            region.save_chunk(&chunk, &Vec::new(), &Vec::new());
+        }
+    }
+}
+
+fn render_tile(entities: OsmEntities, drawer: &Drawer, tile: &Tile, styler: &Styler) -> TileRenderedPixels {
     let filename = format!("tiles/tile_{}_{}.png", tile.x, tile.y);
 
     // if Path::new(&filename).exists() {
@@ -122,12 +148,9 @@ fn render_tile(entities: OsmEntities, drawer: &Drawer, tile: &Tile, styler: &Sty
 
     let mut pixels = TilePixels::new(SCALE);
 
-    let png = drawer.draw_tile(&entities, &tile, &mut pixels, SCALE, &styler).expect("draw tile");
+    let pixels = drawer.draw_to_pixels(&entities, &tile, &mut pixels, SCALE, &styler);
 
-    {
-        let mut file = File::create(filename).expect("open file");
-        file.write_all(&png);
-    }
+    pixels
 }
 
 fn fill_chunk(region: &mut RegionHandle, x: i32, z: i32) {
