@@ -4,7 +4,9 @@ use std::io::{BufReader, Write};
 use std::path::Path;
 use std::process::exit;
 use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicI32, AtomicPtr, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicI32, AtomicI64, AtomicPtr, AtomicU64, AtomicUsize, Ordering};
+use std::thread;
+use std::time::Duration;
 
 use feather_base::{Biome, BlockPosition, Chunk, ChunkPosition};
 use feather_base::anvil::level::{LevelData, SuperflatGeneratorOptions};
@@ -15,6 +17,7 @@ use feather_common::world_source::flat::FlatWorldSource;
 use feather_common::world_source::region::RegionWorldSource;
 use feather_common::world_source::WorldSource;
 use feather_worldgen::{SuperflatWorldGenerator, WorldGenerator};
+use indicatif::{MultiProgress, ProgressBar, ProgressIterator, ProgressStyle};
 use protobuf::{CodedInputStream, Message};
 use threadpool::ThreadPool;
 
@@ -72,7 +75,9 @@ fn main() {
 
     let pool = ThreadPool::new(16);
 
-    let count_lock = Arc::new(AtomicI32::new(0));
+    let count_lock = Arc::new(AtomicU64::new(0));
+
+    println!("start");
 
     for x in min_x..max_x {
         for y in min_y..max_y {
@@ -85,30 +90,37 @@ fn main() {
 
             let storage_clone = storage_arc.clone();
             let styler_clone = styler_arc.clone();
-            let count_clone = Arc::clone(&count_lock);
+            let count_clone = count_lock.clone();
             pool.execute(move || {
                 let entities = storage_clone.get_entities_in_tile_with_neighbors(&tile, &None);
                 let pixels = render_tile(entities, &drawer, &tile, &styler_clone);
-                fill_region(x - min_x, y - min_y, pixels);
-
-                let current = count_clone.fetch_add(1, Ordering::SeqCst);
-                println!("{} / {}", current, range_x * range_y);
+                fill_region(count_clone, x - min_x, y - min_y, pixels);
             });
         }
     }
 
-    pool.join()
+    let count_clone = count_lock.clone();
+    let t = thread::spawn(move || {
+        let bar = ProgressBar::new((range_x * range_y * 32 * 32) as u64);
+        let sty = ProgressStyle::default_bar()
+            .template("[{elapsed_precise}] ({per_sec}) {bar:40.cyan/blue} {pos:>7}/{len:7} [ETA {eta_precise}]")
+            .progress_chars("##-");
+        bar.set_style(sty);
+        loop {
+            let current = count_clone.load(Ordering::SeqCst);
+            bar.set_position(current);
+            if current >= (32 * 32 * range_x * range_y) as u64 {
+                break
+            }
+        }
+        bar.finish_with_message("Done");
+    });
 
-    //
-    // for x in 0..15 {
-    //     for z in 0..15 {
-    //         println!("{}/{}", x * 16 + z, 16 * 16);
-    //         fill_chunk(&mut region, x, z);
-    //     }
-    // }
+    pool.join();
+    t.join();
 }
 
-fn fill_region(region_x: u32, region_y: u32, pixels: TileRenderedPixels) {
+fn fill_region(count_lock: Arc<AtomicU64>, region_x: u32, region_y: u32, pixels: TileRenderedPixels) {
     let min_chunk_x = region_x << 5;
     let min_chunk_y = region_y << 5;
 
@@ -125,22 +137,23 @@ fn fill_region(region_x: u32, region_y: u32, pixels: TileRenderedPixels) {
                 for y in 0..16 {
                     let img_x = (chunk_x - min_chunk_x) * 16 + x;
                     let img_y = (chunk_y - min_chunk_y) * 16 + y;
-                    let color = pixels.triples[(img_x * 512 + img_y) as usize];
+                    let color = pixels.triples[(img_y * 512 + img_x) as usize];
                     let block = match color {
-                        (255,255,255) => BlockId::oak_planks(),
-                        (255,0,0) => BlockId::coal_block(),
+                        (255, 255, 255) => BlockId::oak_planks(),
+                        (255, 0, 0) => BlockId::coal_block(),
                         _ => BlockId::grass_block()
                     };
                     chunk.set_block_at(x as usize, 10, y as usize, block);
                 }
             }
             region.save_chunk(&chunk, &Vec::new(), &Vec::new());
+            count_lock.fetch_add(1, Ordering::SeqCst);
         }
     }
 }
 
 fn render_tile(entities: OsmEntities, drawer: &Drawer, tile: &Tile, styler: &Styler) -> TileRenderedPixels {
-    let filename = format!("tiles/tile_{}_{}.png", tile.x, tile.y);
+    // let filename = format!("tiles/tile_{}_{}.png", tile.x, tile.y);
 
     // if Path::new(&filename).exists() {
     //     return;
