@@ -1,7 +1,7 @@
 use std::cmp::{max, min};
 use std::fs::File;
 
-use cairo::{Context, Format, glib, ImageSurface};
+use cairo::{Context, Format, glib, ImageSurface, Antialias};
 use cairo::glib::Error;
 use cairo::PatternType::Surface;
 
@@ -49,51 +49,65 @@ impl Tile {
     }
 }
 
-pub fn render(store: &Store, tile: &Tile, size: f64, line_width: f64) {
-    let way_ids: Vec<i64> = store.ways_in_tile(tile);
+pub fn render(store: &Store, tile: &Tile, size: f64, line_width: f64) -> Result<(), cairo::Error> {
     let surface = ImageSurface::create(Format::Rgb30, size as i32, size as i32).expect("create surface");
     let ctx = Context::new(&surface).expect("create context");
 
+    ctx.set_antialias(Antialias::None);
     ctx.set_source_rgb(0f64, 0f64, 0f64);
     ctx.rectangle(0f64, 0f64, size, size);
-    ctx.fill();
+    ctx.fill()?;
 
-    ctx.set_line_width(line_width);
-    ctx.set_source_rgb(1f64, 1f64, 1f64);
+    for id in store.ways_in_tile_by_type(tile, Some(String::from("building"))) {
+        build_path(store, size, &ctx, &tile, &id);
+        ctx.set_source_rgb(1f64, 0f64, 0f64);
+        ctx.fill_preserve()?;
 
-    // ctx.translate(size / 2f64, size / 2f64);
-    // ctx.rotate(0f64.to_radians());
-
-    let top_left = &tile.top_left;
-    let tile_size = f64::abs(&tile.bottom_right.x - &tile.top_left.x);
-
-    for id in way_ids {
-        if let Some(w) = store.ways.get(&id) {
-            let points: Vec<&Point> = w.node_ids.iter()
-                .filter_map(|nid| store.nodes.get(nid))
-                .map(|n| &n.point)
-                .collect();
-
-            let mut first = true;
-            for p in points {
-                let x = (p.x - top_left.x) * size / tile_size;
-                let y = (p.y - top_left.y) * size / tile_size;
-
-                if first {
-                    ctx.move_to(x, y);
-                    first = false;
-                } else {
-                    ctx.line_to(x, y);
-                }
-            }
-        }
+        ctx.set_source_rgb(0f64, 1f64, 0f64);
+        ctx.set_line_width(1f64);
+        ctx.stroke()?;
     }
-    ctx.stroke();
+
+    for id in store.ways_in_tile_by_type(tile, Some(String::from("highway"))) {
+        build_path(store, size, &ctx, &tile, &id);
+        ctx.set_source_rgb(1f64, 1f64, 1f64);
+        ctx.set_line_width(line_width);
+        ctx.stroke()?;
+    }
 
     let mut file = File::create("file.png").expect("Couldn't create 'file.png'");
     match surface.write_to_png(&mut file) {
         Ok(_) => println!("file.png created"),
         Err(_) => println!("Error create file.png"),
+    }
+
+    Ok(())
+}
+
+fn build_path(store: &Store, size: f64, ctx: &Context, tile: &Tile, id: &i64) {
+    let top_left = &tile.top_left;
+    let tile_size = f64::abs(&tile.bottom_right.x - &tile.top_left.x);
+
+    ctx.new_path();
+
+    if let Some(w) = store.ways.get(&id) {
+        let points: Vec<&Point> = w.node_ids.iter()
+            .filter_map(|nid| store.nodes.get(nid))
+            .map(|n| &n.point)
+            .collect();
+
+        let mut first = true;
+        for p in points {
+            let x = (p.x - top_left.x) * size / tile_size;
+            let y = (p.y - top_left.y) * size / tile_size;
+
+            if first {
+                ctx.move_to(x, y);
+                first = false;
+            } else {
+                ctx.line_to(x, y);
+            }
+        }
     }
 }
 

@@ -12,11 +12,13 @@ use crate::renderer::Tile;
 pub struct Store {
     pub nodes: HashMap<i64, Node>,
     pub ways: HashMap<i64, Way>,
-    pub ways_from_node: HashMap<i64, HashSet<i64>>,
+    pub multi_polygons: HashMap<i64, MultiPolygon>,
+    pub ways_by_type: HashMap<String, Vec<i64>>
 }
 
 impl Store {
-    pub fn ways_in_tile(&self, tile: &Tile) -> Vec<i64> {
+
+    pub fn ways_in_tile_by_type(&self, tile: &Tile, way_type: Option<String>) -> Vec<i64> {
         let mut ids = Vec::new();
 
         let tile_geo = Rect::<f64>::new(
@@ -31,7 +33,20 @@ impl Store {
             tile.top_left.to_geo()
         ]);
 
+        ;
+        let restricted_ids= if let Some(t) = &way_type {
+            self.ways_by_type.get(t)
+        }else{
+            None
+        };
+
         for (id, way) in &self.ways {
+            if restricted_ids.is_some() {
+                if !restricted_ids.unwrap().contains(id) {
+                    continue
+                }
+            }
+
             let points: Vec<Coordinate<f64>> = way.node_ids.iter()
                 .filter_map(|node_id| self.nodes.get(node_id))
                 .map(|node| node.point.to_geo())
@@ -57,6 +72,10 @@ impl Store {
         }
         ids
     }
+
+    pub fn ways_in_tile(&self, tile: &Tile) -> Vec<i64> {
+        self.ways_in_tile_by_type(tile, None)
+    }
 }
 
 impl Default for Store {
@@ -64,7 +83,8 @@ impl Default for Store {
         Store {
             nodes: Default::default(),
             ways: Default::default(),
-            ways_from_node: Default::default(),
+            multi_polygons: Default::default(),
+            ways_by_type: Default::default()
         }
     }
 }
@@ -78,6 +98,12 @@ pub struct Node {
 pub struct Way {
     pub id: i64,
     pub node_ids: Vec<i64>,
+}
+
+pub struct MultiPolygon {
+    pub id: i64,
+    pub outer_ways: Vec<i64>,
+    pub inner_ways: Vec<i64>
 }
 
 pub fn parse_pbf(filename: &str) -> Result<Store, Error> {
@@ -109,20 +135,53 @@ pub fn parse_pbf(filename: &str) -> Result<Store, Error> {
             Element::Way(w) => {
                 let id = w.id();
                 let node_ids: Vec<i64> = w.refs().collect();
-                    // .map(|n| {
-                    //     store.ways_from_node.entry(n.clone())
-                    //         .or_default()
-                    //         .insert(id);
-                    //     n
-                    // })
-
                 let way = Way {
                     id,
                     node_ids,
                 };
                 store.ways.insert(id, way);
+
+                for (key, value) in w.tags() {
+                    match key {
+                        "highway" => store.ways_by_type.entry("highway".to_string()).or_default().push(w.id()),
+                        "water" => store.ways_by_type.entry("water".to_string()).or_default().push(w.id()),
+                        "building" => store.ways_by_type.entry("building".to_string()).or_default().push(w.id()),
+                        _ => {}
+                    }
+                }
             }
-            Element::Relation(_) => {}
+            Element::Relation(r) => {
+                // let id = r.id();
+                //
+                // let mut valid = false;
+                // for (key, value) in r.tags() {
+                //     if key == "type" && value == "multipolygon" {
+                //         valid = true;
+                //         break;
+                //     }
+                // }
+                //
+                // if valid {
+                //     let mut outer_ways: Vec<i64> = Vec::new();
+                //     let mut inner_ways: Vec<i64> = Vec::new();
+                //     for m in r.members() {
+                //         if matches!(m.member_type, Way) {
+                //             if let Ok(role) = m.role() {
+                //                 match role {
+                //                     "outer" => outer_ways.push(m.member_id),
+                //                     "inner" => inner_ways.push(m.member_id),
+                //                     _ => {}
+                //                 }
+                //             }
+                //         }
+                //     }
+                //     store.multi_polygons.insert(r.id(), MultiPolygon {
+                //         id,
+                //         outer_ways,
+                //         inner_ways
+                //     });
+                // }
+            }
         }
     })?;
 
