@@ -28,10 +28,10 @@ impl Coord {
     }
 
     pub fn to_point(&self) -> Point {
-        let (x, y) = lnglat_to_mercator(self.lon, self.lat, 121.0, 0.9999, 250000.0);
+        let subpixel = googleprojection::from_ll_to_subpixel(&(self.lon, self.lat), 15).unwrap();
         Point {
-            x,
-            y,
+            x: subpixel.0,
+            y: subpixel.1,
         }
     }
 

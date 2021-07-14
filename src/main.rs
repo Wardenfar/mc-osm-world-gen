@@ -1,7 +1,3 @@
-mod parser;
-mod coord;
-mod renderer;
-
 use std::cmp::{max, min};
 use std::fs::File;
 use std::io::{BufReader, Write};
@@ -22,8 +18,11 @@ use feather_common::world_source::region::RegionWorldSource;
 use feather_common::world_source::WorldSource;
 use feather_worldgen::{SuperflatWorldGenerator, WorldGenerator};
 use indicatif::{MultiProgress, ProgressBar, ProgressIterator, ProgressStyle};
-use protobuf::{CodedInputStream, Message};
 use threadpool::ThreadPool;
+
+mod parser;
+mod coord;
+mod renderer;
 
 // use renderer::coords::Coords;
 // use renderer::draw::drawer::{Drawer, TileRenderedPixels};

@@ -6,15 +6,13 @@ use geo::coords_iter::GeometryCoordsIter::Polygon;
 use geo::intersects::Intersects;
 use osmpbf::{Element, ElementReader, Error};
 
-use renderer::coords::Coords;
-
-use crate::coord::Coord;
+use crate::coord::{Coord, Point};
 use crate::renderer::Tile;
 
 pub struct Store {
-    nodes: HashMap<i64, Node>,
-    ways: HashMap<i64, Way>,
-    ways_from_node: HashMap<i64, HashSet<i64>>,
+    pub nodes: HashMap<i64, Node>,
+    pub ways: HashMap<i64, Way>,
+    pub ways_from_node: HashMap<i64, HashSet<i64>>,
 }
 
 impl Store {
@@ -36,7 +34,7 @@ impl Store {
         for (id, way) in &self.ways {
             let points: Vec<Coordinate<f64>> = way.node_ids.iter()
                 .filter_map(|node_id| self.nodes.get(node_id))
-                .map(|node| node.coord.to_point().to_geo())
+                .map(|node| node.point.to_geo())
                 .collect();
 
             let mut found = false;
@@ -72,13 +70,14 @@ impl Default for Store {
 }
 
 pub struct Node {
-    id: i64,
-    coord: Coord,
+    pub id: i64,
+    pub coord: Coord,
+    pub point: Point
 }
 
 pub struct Way {
-    id: i64,
-    node_ids: Vec<i64>,
+    pub id: i64,
+    pub node_ids: Vec<i64>,
 }
 
 pub fn parse_pbf(filename: &str) -> Result<Store, Error> {
@@ -88,16 +87,22 @@ pub fn parse_pbf(filename: &str) -> Result<Store, Error> {
     reader.for_each(|element| {
         match element {
             Element::Node(n) => {
+                let coord = Coord::new(n.lat(), n.lon());
+                let point = coord.to_point();
                 let node = Node {
                     id: n.id(),
-                    coord: Coord::new(n.lat(), n.lon()),
+                    coord,
+                    point
                 };
                 store.nodes.insert(node.id, node);
             }
             Element::DenseNode(n) => {
+                let coord = Coord::new(n.lat(), n.lon());
+                let point = coord.to_point();
                 let node = Node {
                     id: n.id(),
-                    coord: Coord::new(n.lat(), n.lon()),
+                    coord,
+                    point
                 };
                 store.nodes.insert(node.id, node);
             }
