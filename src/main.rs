@@ -1,3 +1,5 @@
+#![feature(test)]
+
 use std::cmp::{max, min};
 use std::fs::File;
 use std::io::{BufReader, Write};

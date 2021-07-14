@@ -75,11 +75,11 @@ pub fn render(store: &Store, tile: &Tile, size: f64, line_width: f64) -> Result<
         ctx.stroke()?;
     }
 
-    let mut file = File::create("file.png").expect("Couldn't create 'file.png'");
-    match surface.write_to_png(&mut file) {
-        Ok(_) => println!("file.png created"),
-        Err(_) => println!("Error create file.png"),
-    }
+    // let mut file = File::create("file.png").expect("Couldn't create 'file.png'");
+    // match surface.write_to_png(&mut file) {
+    //     Ok(_) => println!("file.png created"),
+    //     Err(_) => println!("Error create file.png"),
+    // }
 
     Ok(())
 }
@@ -123,6 +123,9 @@ mod test {
 
     use super::*;
 
+    extern crate test;
+    use test::Bencher;
+
     #[test]
     fn intersect() {
         let a: LineString<f64> = vec![[0., 0.], [1., 0.], [1., 1.], [0., 1.], [0., 0.]].into();
@@ -142,6 +145,20 @@ mod test {
         });
 
         super::render(&store, &tile, 256f64, 1f64);
+    }
+
+    #[bench]
+    fn bench_render(b: &mut Bencher) {
+        let store = parse_pbf("herblay.pbf").expect("read pbf file");
+        let tile = Tile::new(Coord {
+            lat: 48.99265,
+            lon: 2.14804,
+        }, Coord {
+            lat: 48.98922,
+            lon: 2.15341,
+        });
+
+        b.iter(|| super::render(&store, &tile, 256f64, 1f64));
     }
 
     #[test]
