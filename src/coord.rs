@@ -7,11 +7,13 @@ use mercator::{lnglat_to_mercator, mercator_to_lnglat};
 pub const MAX_ZOOM: u8 = 18;
 pub const TILE_SIZE: u32 = 256;
 
+#[derive(Debug)]
 pub struct Coord {
     pub lat: f64,
     pub lon: f64,
 }
 
+#[derive(Debug)]
 pub struct Point {
     pub x: f64,
     pub y: f64,

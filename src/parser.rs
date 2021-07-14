@@ -103,16 +103,14 @@ pub fn parse_pbf(filename: &str) -> Result<Store, Error> {
             }
             Element::Way(w) => {
                 let id = w.id();
-                let node_ids: Vec<i64> = w.raw_refs()
-                    .iter()
-                    .map(|n| n.clone())
-                    .map(|n| {
-                        store.ways_from_node.entry(n.clone())
-                            .or_default()
-                            .insert(id);
-                        n
-                    })
-                    .collect();
+                let node_ids: Vec<i64> = w.refs().collect();
+                    // .map(|n| {
+                    //     store.ways_from_node.entry(n.clone())
+                    //         .or_default()
+                    //         .insert(id);
+                    //     n
+                    // })
+
                 let way = Way {
                     id,
                     node_ids,

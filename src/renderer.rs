@@ -3,6 +3,7 @@ use std::cmp::{max, min};
 use crate::coord::{Coord, Point};
 use crate::parser::Store;
 
+#[derive(Debug)]
 pub struct Tile {
     pub top_left: Point,
     pub bottom_right: Point,
