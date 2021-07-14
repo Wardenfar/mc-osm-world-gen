@@ -11,6 +11,9 @@ indicatif = "0.16.1"
 flate2 = "1.0.20"
 protobuf = "2.23.0"
 renderer = {path = "../osm-renderer"}
+osmpbf = "0.2"
+mercator = "0.1.2"
+geo = "0.18.0"
 threadpool = "1.8.1"
 feather-base = {git = "https://github.com/feather-rs/feather", branch="main"}
 feather-blocks = {git = "https://github.com/feather-rs/feather", branch="main"}
