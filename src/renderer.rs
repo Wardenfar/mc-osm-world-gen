@@ -1,7 +1,9 @@
 use std::cmp::{max, min};
 use std::fs::File;
+use std::io::BufWriter;
+use std::path::Path;
 
-use cairo::{Context, Format, glib, ImageSurface, Antialias};
+use cairo::{Antialias, Context, Format, glib, ImageSurface};
 use cairo::glib::Error;
 use cairo::PatternType::Surface;
 
@@ -49,30 +51,34 @@ impl Tile {
     }
 }
 
-pub fn render(store: &Store, tile: &Tile, size: f64, line_width: f64) -> Result<(), cairo::Error> {
-    let surface = ImageSurface::create(Format::Rgb30, size as i32, size as i32).expect("create surface");
-    let ctx = Context::new(&surface).expect("create context");
+pub struct Pixel(u8, u8, u8);
 
-    ctx.set_antialias(Antialias::None);
-    ctx.set_source_rgb(0f64, 0f64, 0f64);
-    ctx.rectangle(0f64, 0f64, size, size);
-    ctx.fill()?;
+pub fn render(store: &Store, tile: &Tile, size: f64, line_width: f64) -> Result<Vec<Pixel>, cairo::Error> {
+    let mut surface = ImageSurface::create(Format::Rgb24, size as i32, size as i32).expect("create surface");
+    {
+        let ctx = Context::new(&surface).expect("create context");
 
-    for id in store.ways_in_tile_by_type(tile, Some(String::from("building"))) {
-        build_path(store, size, &ctx, &tile, &id);
-        ctx.set_source_rgb(1f64, 0f64, 0f64);
-        ctx.fill_preserve()?;
+        ctx.set_antialias(Antialias::None);
+        ctx.set_source_rgb(0f64, 0f64, 0f64);
+        ctx.rectangle(0f64, 0f64, size, size);
+        ctx.fill()?;
 
-        ctx.set_source_rgb(0f64, 1f64, 0f64);
-        ctx.set_line_width(1f64);
-        ctx.stroke()?;
-    }
+        for id in store.ways_in_tile_by_type(tile, Some(String::from("building"))) {
+            build_path(store, size, &ctx, &tile, &id);
+            ctx.set_source_rgb(1f64, 0f64, 0f64);
+            ctx.fill_preserve()?;
 
-    for id in store.ways_in_tile_by_type(tile, Some(String::from("highway"))) {
-        build_path(store, size, &ctx, &tile, &id);
-        ctx.set_source_rgb(1f64, 1f64, 1f64);
-        ctx.set_line_width(line_width);
-        ctx.stroke()?;
+            ctx.set_source_rgb(0f64, 1f64, 0f64);
+            ctx.set_line_width(1f64);
+            ctx.stroke()?;
+        }
+
+        for id in store.ways_in_tile_by_type(tile, Some(String::from("highway"))) {
+            build_path(store, size, &ctx, &tile, &id);
+            ctx.set_source_rgb(1f64, 1f64, 1f64);
+            ctx.set_line_width(line_width);
+            ctx.stroke()?;
+        }
     }
 
     // let mut file = File::create("file.png").expect("Couldn't create 'file.png'");
@@ -81,7 +87,25 @@ pub fn render(store: &Store, tile: &Tile, size: f64, line_width: f64) -> Result<
     //     Err(_) => println!("Error create file.png"),
     // }
 
-    Ok(())
+    let width = surface.width() as u32;
+    let height = surface.height() as u32;
+
+    let mut data = surface.data().unwrap().to_vec();
+
+    let pixels: Vec<Pixel> = data.chunks(4)
+        .map(|c| Pixel(c[2], c[1], c[0]))
+        .collect();
+
+    // let path = Path::new(r"image.png");
+    // let file = File::create(path).unwrap();
+    // let ref mut w = BufWriter::new(file);
+    //
+    // let mut encoder = png::Encoder::new(w, width, height); // Width is 2 pixels and height is 1.
+    // encoder.set_color(png::ColorType::RGB);
+    // encoder.set_depth(png::BitDepth::Eight);
+    // let mut writer = encoder.write_header().unwrap();
+    // writer.write_image_data(pixels.as_slice()).unwrap(); // Save
+    Ok(pixels)
 }
 
 fn build_path(store: &Store, size: f64, ctx: &Context, tile: &Tile, id: &i64) {
@@ -115,6 +139,7 @@ fn build_path(store: &Store, size: f64, ctx: &Context, tile: &Tile, id: &i64) {
 mod test {
     use std::io::Error;
     use std::process::id;
+    use test::Bencher;
 
     use geo::intersects::Intersects;
     use geo::LineString;
@@ -124,7 +149,6 @@ mod test {
     use super::*;
 
     extern crate test;
-    use test::Bencher;
 
     #[test]
     fn intersect() {
@@ -144,7 +168,7 @@ mod test {
             lon: 2.15341,
         });
 
-        super::render(&store, &tile, 256f64, 1f64);
+        assert!(super::render(&store, &tile, 256f64, 1f64).is_ok());
     }
 
     #[bench]
@@ -158,7 +182,7 @@ mod test {
             lon: 2.15341,
         });
 
-        b.iter(|| super::render(&store, &tile, 256f64, 1f64));
+        b.iter(|| assert!(super::render(&store, &tile, 256f64, 1f64).is_ok()););
     }
 
     #[test]
