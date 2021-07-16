@@ -34,8 +34,8 @@ impl Tile {
 
 impl Tile {
     pub fn new(a: Coord, b: Coord) -> Self {
-        let pa = a.to_point();
-        let pb = b.to_point();
+        let pa = a.to_point(17);
+        let pb = b.to_point(17);
         let tl = Point {
             x: f64::min(pa.x, pb.x),
             y: f64::min(pa.y, pb.y),
@@ -51,7 +51,7 @@ impl Tile {
     }
 }
 
-pub struct Pixel(u8, u8, u8);
+pub struct Pixel(pub u8, pub u8, pub u8);
 
 pub fn render(store: &Store, tile: &Tile, size: f64, line_width: f64) -> Result<Vec<Pixel>, cairo::Error> {
     let mut surface = ImageSurface::create(Format::Rgb24, size as i32, size as i32).expect("create surface");
@@ -159,7 +159,7 @@ mod test {
 
     #[test]
     fn render() {
-        let store = parse_pbf("herblay.pbf").expect("read pbf file");
+        let store = parse_pbf("herblay.pbf", 17).expect("read pbf file");
         let tile = Tile::new(Coord {
             lat: 48.99265,
             lon: 2.14804,
@@ -173,7 +173,7 @@ mod test {
 
     #[bench]
     fn bench_render(b: &mut Bencher) {
-        let store = parse_pbf("herblay.pbf").expect("read pbf file");
+        let store = parse_pbf("herblay.pbf", 17).expect("read pbf file");
         let tile = Tile::new(Coord {
             lat: 48.99265,
             lon: 2.14804,
@@ -182,12 +182,12 @@ mod test {
             lon: 2.15341,
         });
 
-        b.iter(|| assert!(super::render(&store, &tile, 256f64, 1f64).is_ok()););
+        b.iter(|| assert!(super::render(&store, &tile, 256f64, 1f64).is_ok()));
     }
 
     #[test]
     fn find() -> Result<(), Error> {
-        let store = parse_pbf("herblay.pbf")?;
+        let store = parse_pbf("herblay.pbf", 17)?;
         let tile = Tile::new(Coord {
             lat: 48.99090,
             lon: 2.15105,

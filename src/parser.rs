@@ -13,7 +13,9 @@ pub struct Store {
     pub nodes: HashMap<i64, Node>,
     pub ways: HashMap<i64, Way>,
     pub multi_polygons: HashMap<i64, MultiPolygon>,
-    pub ways_by_type: HashMap<String, Vec<i64>>
+    pub ways_by_type: HashMap<String, Vec<i64>>,
+    pub min_point: Point,
+    pub max_point: Point
 }
 
 impl Store {
@@ -84,7 +86,9 @@ impl Default for Store {
             nodes: Default::default(),
             ways: Default::default(),
             multi_polygons: Default::default(),
-            ways_by_type: Default::default()
+            ways_by_type: Default::default(),
+            min_point: Point { x: 0.0, y: 0.0 },
+            max_point: Point { x: 0.0, y: 0.0 }
         }
     }
 }
@@ -106,15 +110,34 @@ pub struct MultiPolygon {
     pub inner_ways: Vec<i64>
 }
 
-pub fn parse_pbf(filename: &str) -> Result<Store, Error> {
+pub fn parse_pbf(filename: &str, zoom: usize) -> Result<Store, Error> {
     let reader = ElementReader::from_path(filename)?;
     let mut store = Store::default();
+
+    let mut min_x: f64 = 0.;
+    let mut max_x: f64 = 0.;
+    let mut min_y: f64 = 0.;
+    let mut max_y: f64 = 0.;
 
     reader.for_each(|element| {
         match element {
             Element::Node(n) => {
                 let coord = Coord::new(n.lat(), n.lon());
-                let point = coord.to_point();
+                let point = coord.to_point(zoom);
+
+                if min_x == 0. || point.x < min_x {
+                    min_x = point.x
+                }
+                if max_x == 0. || point.x > max_x {
+                    max_x = point.x
+                }
+                if min_y == 0. || point.y < min_y {
+                    min_y = point.y;
+                }
+                if max_y == 0. || n.lon() > max_y {
+                    max_y = point.y;
+                }
+
                 let node = Node {
                     id: n.id(),
                     coord,
@@ -124,7 +147,21 @@ pub fn parse_pbf(filename: &str) -> Result<Store, Error> {
             }
             Element::DenseNode(n) => {
                 let coord = Coord::new(n.lat(), n.lon());
-                let point = coord.to_point();
+                let point = coord.to_point(zoom);
+
+                if min_x == 0. || point.x < min_x {
+                    min_x = point.x
+                }
+                if max_x == 0. || point.x > max_x {
+                    max_x = point.x
+                }
+                if min_y == 0. || point.y < min_y {
+                    min_y = point.y;
+                }
+                if max_y == 0. || n.lon() > max_y {
+                    max_y = point.y;
+                }
+
                 let node = Node {
                     id: n.id(),
                     coord,
@@ -185,6 +222,16 @@ pub fn parse_pbf(filename: &str) -> Result<Store, Error> {
         }
     })?;
 
+    store.min_point = Point {
+        x: min_x,
+        y: min_y
+    };
+
+    store.max_point = Point {
+        x: max_x,
+        y: max_y
+    };
+
     Ok(store)
 }
 
@@ -194,7 +241,7 @@ mod test {
 
     #[test]
     fn parse() -> Result<(), Error> {
-        let store = parse_pbf("herblay.pbf")?;
+        let store = parse_pbf("herblay.pbf", 17)?;
         println!("nodes:{}  ways:{}", store.nodes.len(), store.ways.len());
         assert!(store.nodes.len() > 0);
         assert!(store.ways.len() > 0);

@@ -27,8 +27,8 @@ impl Coord {
         }
     }
 
-    pub fn to_point(&self) -> Point {
-        let subpixel = googleprojection::from_ll_to_subpixel(&(self.lon, self.lat), 15).unwrap();
+    pub fn to_point(&self, zoom: usize) -> Point {
+        let subpixel = googleprojection::from_ll_to_subpixel(&(self.lon, self.lat), zoom).unwrap();
         Point {
             x: subpixel.0,
             y: subpixel.1,
