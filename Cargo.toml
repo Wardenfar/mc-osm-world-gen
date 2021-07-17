@@ -17,14 +17,8 @@ threadpool = "1.8.1"
 anvil-region = "0.8.0"
 named-binary-tag = "0.3"
 byteorder = "1.4.3"
-#feather-base = { git = "https://github.com/feather-rs/feather", branch = "main" }
 feather-blocks = { git = "https://github.com/feather-rs/feather", branch = "main" }
-#feather-common = { git = "https://github.com/feather-rs/feather", branch = "main" }
-#feather-worldgen = { git = "https://github.com/feather-rs/feather", branch = "main" }
 
 [dependencies.cairo-rs]
 version = "0.14.1"
 features = ["png"]
-
-[profile.release]
-debug = true

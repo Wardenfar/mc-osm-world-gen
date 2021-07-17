@@ -17,15 +17,6 @@ use indicatif::{MultiProgress, ProgressBar, ProgressIterator, ProgressStyle};
 use nbt::CompoundTag;
 use threadpool::ThreadPool;
 
-// use feather_base::{Biome, BlockPosition, Chunk, ChunkPosition};
-// use feather_base::anvil::level::{LevelData, SuperflatGeneratorOptions};
-// use feather_base::anvil::region::{create_region, Error, load_region, RegionHandle, RegionPosition};
-// use feather_common::{Game, World};
-// use feather_common::world_source::flat::FlatWorldSource;
-// use feather_common::world_source::region::RegionWorldSource;
-// use feather_common::world_source::WorldSource;
-// use feather_worldgen::{SuperflatWorldGenerator, WorldGenerator};
-
 use crate::coord::Point;
 use crate::parser::parse_pbf;
 use crate::renderer::{Pixel, render, Tile};
@@ -36,18 +27,10 @@ mod parser;
 mod coord;
 mod renderer;
 
-// use renderer::coords::Coords;
-// use renderer::draw::drawer::{Drawer, TileRenderedPixels};
-// use renderer::draw::tile_pixels::TilePixels;
-// use renderer::geodata::reader::{GeodataReader, OsmEntities};
-// use renderer::mapcss::parser::parse_file;
-// use renderer::mapcss::styler::{Styler, StyleType};
-// use renderer::tile::{coords_to_max_zoom_tile, coords_to_zoom_tile, MAX_ZOOM, Tile, tile_to_max_zoom_tile_range};
-
 static SCALE: usize = 2;
 
 fn main() {
-    let zoom = 15;
+    let zoom = 17;
 
     let store = parse_pbf("herblay.pbf", zoom).expect("read pbf file");
     let store = Arc::new(store);
@@ -123,7 +106,6 @@ fn fill_region(count_lock: Arc<AtomicU64>, region_x: u32, region_y: u32, pixels:
 
     let region_position = RegionPosition::new(region_x as i32, region_y as i32);
 
-
     let mut region = provider.get_region(region_position).unwrap();
 
     for chunk_x in min_chunk_x..(min_chunk_x + 32) {
@@ -133,8 +115,8 @@ fn fill_region(count_lock: Arc<AtomicU64>, region_x: u32, region_y: u32, pixels:
 
             let mut chunk_compound_tag = CompoundTag::new();
             let mut level_compound_tag = CompoundTag::new();
-            level_compound_tag.insert_i32("xPos", chunk_x as i32 + 1);
-            level_compound_tag.insert_i32("zPos", chunk_y as i32 + 1);
+            level_compound_tag.insert_i32("xPos", chunk_x as i32);
+            level_compound_tag.insert_i32("zPos", chunk_y as i32);
             level_compound_tag.insert_i64("LastUpdate", 0);
             level_compound_tag.insert_str("Status", "full");
 
@@ -180,7 +162,7 @@ fn fill_region(count_lock: Arc<AtomicU64>, region_x: u32, region_y: u32, pixels:
                     for x in 0..16 {
                         let img_x = (chunk_x - min_chunk_x) * 16 + x;
                         let img_z = (chunk_y - min_chunk_y) * 16 + z;
-                        let color = &pixels[(img_x * 512 + img_z) as usize];
+                        let color = &pixels[(img_z * 512 + img_x) as usize];
                         let block_index = match color {
                             Pixel(255, 255, 255) => 0u8,
                             Pixel(255, 0, 0) => 1u8,
@@ -195,14 +177,14 @@ fn fill_region(count_lock: Arc<AtomicU64>, region_x: u32, region_y: u32, pixels:
             let mut states = Vec::new();
             for chunk in indexes.chunks(8) {
                 states.push(i64::from_be_bytes([
-                    chunk[0],
-                    chunk[1],
-                    chunk[2],
-                    chunk[3],
-                    chunk[4],
-                    chunk[5],
+                    chunk[7],
                     chunk[6],
-                    chunk[7]
+                    chunk[5],
+                    chunk[4],
+                    chunk[3],
+                    chunk[2],
+                    chunk[1],
+                    chunk[0]
                 ].try_into().unwrap()));
             }
 
