@@ -1,38 +1,29 @@
-// #![feature(test)]
-
-use std::cmp::{max, min};
-use std::fs::File;
-use std::io::{BufReader, Write, Cursor};
-use std::path::Path;
-use std::process::exit;
-use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicI32, AtomicI64, AtomicPtr, AtomicU64, AtomicUsize, Ordering};
-use std::thread;
-use std::time::Duration;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::{env, thread};
 
 use anvil_region::position::{RegionChunkPosition, RegionPosition};
 use anvil_region::provider::{FolderRegionProvider, RegionProvider};
 use feather_blocks::BlockId;
-use indicatif::{MultiProgress, ProgressBar, ProgressIterator, ProgressStyle};
+use indicatif::{ProgressBar, ProgressStyle};
 use nbt::CompoundTag;
 use threadpool::ThreadPool;
 
 use crate::coord::Point;
 use crate::parser::parse_pbf;
 use crate::renderer::{Pixel, render, Tile};
-use byteorder::{ReadBytesExt, LittleEndian};
-use std::convert::TryInto;
 
 mod parser;
 mod coord;
 mod renderer;
 
-static SCALE: usize = 2;
-
 fn main() {
+    let args: Vec<String> = env::args().collect();
+    assert_eq!(args.len(), 2, "args:  <pbf-file>");
+
     let zoom = 17;
 
-    let store = parse_pbf("herblay.pbf", zoom).expect("read pbf file");
+    let store = parse_pbf(&args[1], zoom).expect("read pbf file");
     let store = Arc::new(store);
 
     let min_point = &store.min_point;
@@ -49,7 +40,7 @@ fn main() {
     let count_x = (diff_x / size).ceil() as i32;
     let count_y = (diff_y / size).ceil() as i32;
 
-    let pool = ThreadPool::new(16);
+    let pool = ThreadPool::new(32);
 
     let count_lock = Arc::new(AtomicU64::new(0));
 
@@ -72,12 +63,11 @@ fn main() {
             let count_lock = count_lock.clone();
             pool.execute(move || {
                 let pixels = render(&store, &tile, size, 3f64).expect("render pixels");
-                fill_region(count_lock, x as u32, y as u32, pixels);
+                fill_region(count_lock, x, y, pixels);
             });
         }
     }
 
-    let count_clone = count_lock.clone();
     let t = thread::spawn(move || {
         let bar = ProgressBar::new((count_x * count_y * 32 * 32) as u64);
         let sty = ProgressStyle::default_bar()
@@ -85,7 +75,7 @@ fn main() {
             .progress_chars("##-");
         bar.set_style(sty);
         loop {
-            let current = count_clone.load(Ordering::SeqCst);
+            let current = count_lock.load(Ordering::SeqCst);
             bar.set_position(current);
             if current >= (32 * 32 * count_x * count_y) as u64 {
                 break;
@@ -95,23 +85,23 @@ fn main() {
     });
 
     pool.join();
-    t.join();
+    t.join().unwrap();
 }
 
-fn fill_region(count_lock: Arc<AtomicU64>, region_x: u32, region_y: u32, pixels: Vec<Pixel>) {
+fn fill_region(count_lock: Arc<AtomicU64>, region_x: i32, region_y: i32, pixels: Vec<Pixel>) {
     let min_chunk_x = region_x << 5;
     let min_chunk_y = region_y << 5;
 
     let provider = FolderRegionProvider::new("world/region");
 
-    let region_position = RegionPosition::new(region_x as i32, region_y as i32);
+    let region_position = RegionPosition::new(region_x, region_y);
 
     let mut region = provider.get_region(region_position).unwrap();
 
     for chunk_x in min_chunk_x..(min_chunk_x + 32) {
         for chunk_y in min_chunk_y..(min_chunk_y + 32) {
 
-            let region_chunk_position = RegionChunkPosition::from_chunk_position(chunk_x as i32, chunk_y as i32);
+            let region_chunk_position = RegionChunkPosition::from_chunk_position(chunk_x, chunk_y);
 
             let mut chunk_compound_tag = CompoundTag::new();
             let mut level_compound_tag = CompoundTag::new();
@@ -122,9 +112,9 @@ fn fill_region(count_lock: Arc<AtomicU64>, region_x: u32, region_y: u32, pixels:
 
             let mut section = CompoundTag::new();
             section.insert_i8_vec("BlockLight", vec![0i8; 2048]);
-            section.insert_i8("Y", 10);
+            section.insert_i8("Y", 0);
 
-            let mut all_blocks: Vec<BlockId> = vec![
+            let all_blocks: Vec<BlockId> = vec![
                 BlockId::coal_block(),
                 BlockId::oak_planks(),
                 BlockId::cobblestone(),
@@ -157,7 +147,7 @@ fn fill_region(count_lock: Arc<AtomicU64>, region_x: u32, region_y: u32, pixels:
             section.insert_compound_tag_vec("Palette", blocks);
 
             let mut indexes = Vec::new();
-            for y in 0..16 {
+            for _ in 0..16 {
                 for z in 0..16 {
                     for x in 0..16 {
                         let img_x = (chunk_x - min_chunk_x) * 16 + x;
@@ -185,7 +175,7 @@ fn fill_region(count_lock: Arc<AtomicU64>, region_x: u32, region_y: u32, pixels:
                     chunk[2],
                     chunk[1],
                     chunk[0]
-                ].try_into().unwrap()));
+                ]));
             }
 
             section.insert_i64_vec("BlockStates", states);
@@ -194,39 +184,9 @@ fn fill_region(count_lock: Arc<AtomicU64>, region_x: u32, region_y: u32, pixels:
 
             chunk_compound_tag.insert_compound_tag("Level", level_compound_tag);
 
-            region.write_chunk(region_chunk_position, chunk_compound_tag);
+            region.write_chunk(region_chunk_position, chunk_compound_tag).unwrap();
 
             count_lock.fetch_add(1, Ordering::SeqCst);
-            // println!("{}", chunk_x * 32 + chunk_y);
         }
     }
 }
-//
-// fn render_tile(entities: OsmEntities, drawer: &Drawer, tile: &Tile, styler: &Styler) -> TileRenderedPixels {
-//     // let filename = format!("tiles/tile_{}_{}.png", tile.x, tile.y);
-//
-//     // if Path::new(&filename).exists() {
-//     //     return;
-//     // }
-//
-//     let mut pixels = TilePixels::new(SCALE);
-//
-//     let pixels = drawer.draw_to_pixels(&entities, &tile, &mut pixels, SCALE, &styler);
-//
-//     pixels
-// }
-//
-// fn fill_chunk(region: &mut RegionHandle, x: i32, z: i32) {
-//     let &mut pos = &mut ChunkPosition::new(x, z);
-//
-//     let mut chunk = Chunk::new(pos);
-//
-//     for y in 0..7 {
-//         chunk.fill_section(y, BlockId::oak_planks());
-//     }
-//
-//     let entities = Vec::new();
-//     let block_entities = Vec::new();
-//
-//     region.save_chunk(&chunk, &entities, &block_entities).expect("Cant save the chunk");
-// }

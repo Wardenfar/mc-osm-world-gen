@@ -1,8 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
-use geo::{Coordinate, Line, LineString, Rect};
+use geo::{Coordinate, LineString, Rect};
 use geo::contains::Contains;
-use geo::coords_iter::GeometryCoordsIter::Polygon;
 use geo::intersects::Intersects;
 use osmpbf::{Element, ElementReader, Error};
 
@@ -35,7 +34,6 @@ impl Store {
             tile.top_left.to_geo()
         ]);
 
-        ;
         let restricted_ids= if let Some(t) = &way_type {
             self.ways_by_type.get(t)
         }else{
@@ -43,8 +41,8 @@ impl Store {
         };
 
         for (id, way) in &self.ways {
-            if restricted_ids.is_some() {
-                if !restricted_ids.unwrap().contains(id) {
+            if let Some(restricted_ids) = restricted_ids {
+                if !restricted_ids.contains(id) {
                     continue
                 }
             }
@@ -58,7 +56,7 @@ impl Store {
 
             for p in &points {
                 if tile_geo.contains(p) {
-                    ids.push(id.clone());
+                    ids.push(*id);
                     found = true;
                     break;
                 }
@@ -67,16 +65,11 @@ impl Store {
             if !found {
                 let way_geo = LineString(points);
                 if tile_border.intersects(&way_geo) {
-                    ids.push(id.clone());
-                    found = true;
+                    ids.push(*id);
                 }
             }
         }
         ids
-    }
-
-    pub fn ways_in_tile(&self, tile: &Tile) -> Vec<i64> {
-        self.ways_in_tile_by_type(tile, None)
     }
 }
 
@@ -178,7 +171,7 @@ pub fn parse_pbf(filename: &str, zoom: usize) -> Result<Store, Error> {
                 };
                 store.ways.insert(id, way);
 
-                for (key, value) in w.tags() {
+                for (key, _) in w.tags() {
                     match key {
                         "highway" => store.ways_by_type.entry("highway".to_string()).or_default().push(w.id()),
                         "water" => store.ways_by_type.entry("water".to_string()).or_default().push(w.id()),
@@ -187,38 +180,7 @@ pub fn parse_pbf(filename: &str, zoom: usize) -> Result<Store, Error> {
                     }
                 }
             }
-            Element::Relation(r) => {
-                // let id = r.id();
-                //
-                // let mut valid = false;
-                // for (key, value) in r.tags() {
-                //     if key == "type" && value == "multipolygon" {
-                //         valid = true;
-                //         break;
-                //     }
-                // }
-                //
-                // if valid {
-                //     let mut outer_ways: Vec<i64> = Vec::new();
-                //     let mut inner_ways: Vec<i64> = Vec::new();
-                //     for m in r.members() {
-                //         if matches!(m.member_type, Way) {
-                //             if let Ok(role) = m.role() {
-                //                 match role {
-                //                     "outer" => outer_ways.push(m.member_id),
-                //                     "inner" => inner_ways.push(m.member_id),
-                //                     _ => {}
-                //                 }
-                //             }
-                //         }
-                //     }
-                //     store.multi_polygons.insert(r.id(), MultiPolygon {
-                //         id,
-                //         outer_ways,
-                //         inner_ways
-                //     });
-                // }
-            }
+            Element::Relation(_) => {}
         }
     })?;
 
@@ -233,18 +195,4 @@ pub fn parse_pbf(filename: &str, zoom: usize) -> Result<Store, Error> {
     };
 
     Ok(store)
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn parse() -> Result<(), Error> {
-        let store = parse_pbf("herblay.pbf", 17)?;
-        println!("nodes:{}  ways:{}", store.nodes.len(), store.ways.len());
-        assert!(store.nodes.len() > 0);
-        assert!(store.ways.len() > 0);
-        Ok(())
-    }
 }
