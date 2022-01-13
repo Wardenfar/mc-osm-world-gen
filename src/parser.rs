@@ -4,21 +4,23 @@ use geo::{Coordinate, LineString, Rect};
 use geo::contains::Contains;
 use geo::intersects::Intersects;
 use osmpbf::{Element, ElementReader, Error};
+use tracing::Level;
+use tracing::span;
 
 use crate::coord::{Coord, Point};
 use crate::renderer::Tile;
 
+#[derive(Debug)]
 pub struct Store {
     pub nodes: HashMap<i64, Node>,
     pub ways: HashMap<i64, Way>,
     pub multi_polygons: HashMap<i64, MultiPolygon>,
     pub ways_by_type: HashMap<String, Vec<i64>>,
     pub min_point: Point,
-    pub max_point: Point
+    pub max_point: Point,
 }
 
 impl Store {
-
     pub fn ways_in_tile_by_type(&self, tile: &Tile, way_type: Option<String>) -> Vec<i64> {
         let mut ids = Vec::new();
 
@@ -31,19 +33,19 @@ impl Store {
             tile.top_right().to_geo(),
             tile.bottom_right.to_geo(),
             tile.bottom_left().to_geo(),
-            tile.top_left.to_geo()
+            tile.top_left.to_geo(),
         ]);
 
-        let restricted_ids= if let Some(t) = &way_type {
+        let restricted_ids = if let Some(t) = &way_type {
             self.ways_by_type.get(t)
-        }else{
+        } else {
             None
         };
 
         for (id, way) in &self.ways {
             if let Some(restricted_ids) = restricted_ids {
                 if !restricted_ids.contains(id) {
-                    continue
+                    continue;
                 }
             }
 
@@ -81,29 +83,34 @@ impl Default for Store {
             multi_polygons: Default::default(),
             ways_by_type: Default::default(),
             min_point: Point { x: 0.0, y: 0.0 },
-            max_point: Point { x: 0.0, y: 0.0 }
+            max_point: Point { x: 0.0, y: 0.0 },
         }
     }
 }
 
+#[derive(Debug)]
 pub struct Node {
     pub id: i64,
     pub coord: Coord,
-    pub point: Point
+    pub point: Point,
 }
 
+#[derive(Debug)]
 pub struct Way {
     pub id: i64,
     pub node_ids: Vec<i64>,
 }
 
+#[derive(Debug)]
 pub struct MultiPolygon {
     pub id: i64,
     pub outer_ways: Vec<i64>,
-    pub inner_ways: Vec<i64>
+    pub inner_ways: Vec<i64>,
 }
 
 pub fn parse_pbf(filename: &str, zoom: usize) -> Result<Store, Error> {
+    let span = span!(Level::TRACE, "parse_pbf", zoom = zoom);
+    let _guard = span.enter();
     let reader = ElementReader::from_path(filename)?;
     let mut store = Store::default();
 
@@ -134,7 +141,7 @@ pub fn parse_pbf(filename: &str, zoom: usize) -> Result<Store, Error> {
                 let node = Node {
                     id: n.id(),
                     coord,
-                    point
+                    point,
                 };
                 store.nodes.insert(node.id, node);
             }
@@ -158,7 +165,7 @@ pub fn parse_pbf(filename: &str, zoom: usize) -> Result<Store, Error> {
                 let node = Node {
                     id: n.id(),
                     coord,
-                    point
+                    point,
                 };
                 store.nodes.insert(node.id, node);
             }
@@ -186,12 +193,12 @@ pub fn parse_pbf(filename: &str, zoom: usize) -> Result<Store, Error> {
 
     store.min_point = Point {
         x: min_x,
-        y: min_y
+        y: min_y,
     };
 
     store.max_point = Point {
         x: max_x,
-        y: max_y
+        y: max_y,
     };
 
     Ok(store)

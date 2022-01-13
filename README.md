@@ -1,7 +1,7 @@
 # Minecraft Real world generator (OpenStreetMap)
 
-- 3000 chunk/sec
-- 150k chunks in 1 minute
+- 30k chunk/sec
+- 1M chunks in 1 minute
 
 ## Run
 
