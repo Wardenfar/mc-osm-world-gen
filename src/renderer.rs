@@ -1,4 +1,6 @@
 use cairo::{Antialias, Context, Format, ImageSurface};
+use tracing::Level;
+use tracing::span;
 
 use crate::coord::Point;
 use crate::parser::Store;
@@ -25,6 +27,7 @@ impl Tile {
     }
 }
 
+#[derive(Debug)]
 pub struct Pixel(pub u8, pub u8, pub u8);
 
 pub fn render(store: &Store, tile: &Tile, size: f64, line_width: f64) -> Result<Vec<Pixel>, cairo::Error> {
