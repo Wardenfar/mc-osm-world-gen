@@ -8,7 +8,7 @@
 ```shell
 git clone ...
 cd ...
-cargo run --release -- <file.pbf>
+cargo run --release -- --help
 ```
 
 1) Output in the folder : ./world
