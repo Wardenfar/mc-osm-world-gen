@@ -1,29 +1,22 @@
 [package]
 name = "osm-world-gen"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Wardenfar <theo.emeriau@gmail.com>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-indicatif = "0.16.1"
+clap = { version = "3.1.18", features = ["derive"]}
+indicatif = "0.16.2"
 osmpbf = "0.2"
 mercator = "0.1.2"
 googleprojection = "1.2.0"
 geo = "0.18.0"
-png = "0.16.8"
-threadpool = "1.8.1"
-anvil-region = "0.8.0"
-named-binary-tag = "0.3"
-byteorder = "1.4.3"
-feather-blocks = { git = "https://github.com/feather-rs/feather", branch = "main" }
-tracing = "0.1.29"
-tracing-subscriber = "0.3.5"
-tracing-flame = "0.2.0"
-tokio = { version = "1.15.0", features = ["full", "sync"] }
-futures = "0.3.19"
-
-[dependencies.cairo-rs]
-version = "0.14.1"
-features = ["png"]
+anvil-region = "0.8.1"
+named-binary-tag = "0.6.0"
+feather-blocks = { git = "https://github.com/feather-rs/feather", rev = "67bc206fe244ea4" }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+tracing-flame = "0.2"
+tokio = { version = "1.18", features = ["full"] }
+futures = "0.3"
+tiny-skia = "0.6.3"

@@ -14,10 +14,7 @@ pub struct Point {
 
 impl Coord {
     pub fn new(lat: f64, lon: f64) -> Self {
-        Coord {
-            lat,
-            lon,
-        }
+        Coord { lat, lon }
     }
 
     pub fn to_point(&self, zoom: usize) -> Point {
@@ -52,7 +49,6 @@ macro_rules! point_op {
         }
     };
 }
-
 
 macro_rules! coord_op {
     // `()` indicates that the macro takes no argument.

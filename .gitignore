@@ -1,2 +1,6 @@
 /target
 /world/region/
+*.pbf
+*.iml
+deny.toml
+.idea
